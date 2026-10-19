@@ -1,5 +1,5 @@
 // Caches the app's own files so it opens offline. Bump VERSION after changing any file.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -14,11 +14,12 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Network first (so updates show up), fall back to cache when offline.
+// Network first, skipping the browser's HTTP cache so updates show up right away;
+// fall back to our cache when offline.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || !e.request.url.startsWith(self.location.origin)) return;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(e.request, copy));
