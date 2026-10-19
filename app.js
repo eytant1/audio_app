@@ -47,9 +47,23 @@ let keepPitch = loadSetting('keepPitch', false);
 let repeat = loadSetting('repeat', false);
 let seeking = false;
 
+// Saved playlists, plus which one (if any) is currently open in the playlist card.
+let playlists = loadSetting('playlists', []);     // [{ id, name, songIds }]
+let openId = loadSetting('openPlaylist', null);
+if (!playlists.some((p) => p.id === openId)) openId = null;
+
 const curIndex = () => queue.findIndex((q) => q.key === currentKey);
 const songName = (id) => (library.find((s) => s.id === id) || {}).name || '(missing)';
 const saveQueue = () => saveSetting('queue', queue.map((q) => q.songId));
+const savePlaylists = () => saveSetting('playlists', playlists);
+const openPlaylist = () => playlists.find((p) => p.id === openId);
+const setOpen = (id) => { openId = id; saveSetting('openPlaylist', id); };
+
+function isDirty() {
+  const ids = queue.map((q) => q.songId).join();
+  const p = openPlaylist();
+  return p ? ids !== p.songIds.join() : ids.length > 0;
+}
 
 // ---------- Library ----------
 
@@ -79,6 +93,8 @@ async function deleteSong(id) {
   if (!confirm(`Delete "${songName(id)}" from the library?`)) return;
   if (queue.some((q) => q.key === currentKey && q.songId === id)) stop();
   await store('readwrite', (s) => s.delete(id));
+  for (const p of playlists) p.songIds = p.songIds.filter((songId) => songId !== id);
+  savePlaylists();
   refreshLibrary();
 }
 
@@ -107,13 +123,65 @@ function removeItem(i) {
   render();
 }
 
-$('#clearQueue').addEventListener('click', () => {
-  if (!queue.length || !confirm('Clear the whole playlist?')) return;
+// ---------- Saved playlists ----------
+
+const confirmDiscard = () =>
+  !isDirty() || confirm('The current playlist has unsaved changes. Discard them?');
+
+function loadIntoQueue(songIds, id) {
   stop();
-  queue = [];
+  queue = songIds.map((songId) => ({ key: newId(), songId }));
+  setOpen(id);
   saveQueue();
   render();
-});
+}
+
+function newPlaylist() {
+  if (!confirmDiscard()) return;
+  loadIntoQueue([], null);
+}
+
+function savePlaylist() {
+  const songIds = queue.map((q) => q.songId);
+  const p = openPlaylist();
+  if (p) {
+    p.songIds = songIds;
+  } else {
+    const name = (prompt('Name for this playlist:', `Playlist ${playlists.length + 1}`) || '').trim();
+    if (!name) return;
+    const created = { id: newId(), name, songIds };
+    playlists.push(created);
+    setOpen(created.id);
+  }
+  savePlaylists();
+  render();
+}
+
+function openSaved(id) {
+  if (id === openId && !isDirty()) return;
+  if (!confirmDiscard()) return;
+  loadIntoQueue(playlists.find((p) => p.id === id).songIds, id);
+}
+
+function renamePlaylist(p) {
+  const name = (prompt('Rename playlist:', p.name) || '').trim();
+  if (!name) return;
+  p.name = name;
+  savePlaylists();
+  render();
+}
+
+function deletePlaylist(p) {
+  if (!confirm(`Delete the playlist "${p.name}"? (The songs stay in your library.)`)) return;
+  playlists = playlists.filter((x) => x !== p);
+  // If it was open, its songs stay in the playlist card as an unsaved playlist.
+  if (openId === p.id) setOpen(null);
+  savePlaylists();
+  render();
+}
+
+$('#newPlaylist').addEventListener('click', newPlaylist);
+$('#savePlaylist').addEventListener('click', savePlaylist);
 
 // ---------- Playback ----------
 
@@ -336,6 +404,24 @@ function render() {
   $('#position').textContent = item ? `Track ${ci + 1} of ${queue.length}` : queue.length ? 'Press ▶ to start the playlist' : '';
   renderPlayState();
   renderTime();
+
+  const open = openPlaylist();
+  const dirty = isDirty();
+  $('#playlistName').textContent = open ? open.name : 'New playlist';
+  $('#playlistStatus').textContent = dirty ? 'Unsaved changes' : open ? 'Saved' : '';
+  $('#savePlaylist').disabled = !dirty;
+
+  const pl = $('#playlists');
+  pl.replaceChildren();
+  if (!playlists.length) pl.append(el('li', { className: 'empty', textContent: 'No saved playlists yet. Build one below and press Save.' }));
+  playlists.forEach((p) => {
+    pl.append(el('li', { className: p.id === openId ? 'current' : '' },
+      el('span', { className: 'name', textContent: p.name, onclick: () => openSaved(p.id) }),
+      el('span', { className: 'count', textContent: `${p.songIds.length} song${p.songIds.length === 1 ? '' : 's'}` }),
+      el('button', { textContent: '✎', title: 'Rename', onclick: () => renamePlaylist(p) }),
+      el('button', { className: 'del', textContent: '🗑', title: 'Delete playlist', onclick: () => deletePlaylist(p) }),
+    ));
+  });
 
   const q = $('#queue');
   q.replaceChildren();

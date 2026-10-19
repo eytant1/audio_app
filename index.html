@@ -49,8 +49,22 @@
 
     <section class="card">
       <div class="head">
-        <h2>Playlist</h2>
-        <button id="clearQueue" class="small">Clear</button>
+        <h2>My playlists</h2>
+      </div>
+      <p class="hint">Tap a playlist to open it.</p>
+      <ul id="playlists" class="list"></ul>
+    </section>
+
+    <section class="card">
+      <div class="head">
+        <div>
+          <h2 id="playlistName">New playlist</h2>
+          <div id="playlistStatus" class="sub"></div>
+        </div>
+        <div class="buttons">
+          <button id="newPlaylist" class="small">New</button>
+          <button id="savePlaylist" class="small primary">Save</button>
+        </div>
       </div>
       <p class="hint">Tap a song to play from there. Use ↑ ↓ to reorder. The same song can be added more than once.</p>
       <ol id="queue" class="list"></ol>
