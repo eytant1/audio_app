@@ -117,13 +117,22 @@ $('#clearQueue').addEventListener('click', () => {
 
 // ---------- Playback ----------
 
+// Only touch the rate/pitch when they actually changed: re-setting them while
+// the phone's audio is waking up can leave playback silent.
 function applySpeed() {
-  audio.defaultPlaybackRate = speed;
-  audio.playbackRate = speed;
-  audio.preservesPitch = keepPitch;
-  audio.webkitPreservesPitch = keepPitch;
-  audio.mozPreservesPitch = keepPitch;
+  if (audio.defaultPlaybackRate !== speed) audio.defaultPlaybackRate = speed;
+  if (audio.playbackRate !== speed) audio.playbackRate = speed;
+  for (const prop of ['preservesPitch', 'webkitPreservesPitch', 'mozPreservesPitch']) {
+    if (prop in audio && audio[prop] !== keepPitch) audio[prop] = keepPitch;
+  }
   updatePositionState();
+}
+
+// After the phone sleeps, a plain play() can run the clock with no sound.
+// Seeking to the current spot first restarts the audio output.
+function resume() {
+  if (audio.currentTime > 0) audio.currentTime = audio.currentTime;
+  audio.play().catch((err) => console.warn('play() failed', err));
 }
 
 async function playIndex(i) {
@@ -155,7 +164,7 @@ function togglePlay() {
   if (!currentKey) {
     if (queue.length) playIndex(0);
   } else if (audio.paused) {
-    audio.play();
+    resume();
   } else {
     audio.pause();
   }
@@ -214,6 +223,9 @@ function setSpeed(v) {
 }
 speedBar.addEventListener('input', () => setSpeed(speedBar.value));
 $('#speedReset').addEventListener('click', () => setSpeed(1));
+const clampSpeed = (v) => Math.min(Number(speedBar.max), Math.max(Number(speedBar.min), v));
+$('#speedDown').addEventListener('click', () => setSpeed(clampSpeed(speed - 0.02)));
+$('#speedUp').addEventListener('click', () => setSpeed(clampSpeed(speed + 0.02)));
 
 $('#keepPitch').checked = keepPitch;
 $('#keepPitch').addEventListener('change', (e) => {
@@ -258,7 +270,7 @@ function updatePositionState() {
 
 if ('mediaSession' in navigator) {
   const handlers = {
-    play: () => (currentKey ? audio.play() : togglePlay()),
+    play: () => (currentKey ? resume() : togglePlay()),
     pause: () => audio.pause(),
     stop: () => audio.pause(),
     previoustrack: prev,
